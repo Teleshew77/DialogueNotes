@@ -107,10 +107,39 @@ class MainActivity : Activity() {
         transcriptCard.addView(label("РАСШИФРОВКА РАЗГОВОРА",11f,gold,true)); space(transcriptCard,10)
         transcriptText = label("Пока нет распознанной речи",14f,muted).apply { setLineSpacing(5f,1f); setTextIsSelectable(true) }
         transcriptCard.addView(transcriptText); space(transcriptCard,14)
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val share = Button(this).apply { text = "Поделиться"; isAllCaps = false; setTextColor(gold); background = shape(android.graphics.Color.rgb(28,25,19),12,line); setOnClickListener { shareNotes() } }
-        val clear = Button(this).apply { text = "Новый разговор"; isAllCaps = false; setTextColor(muted); background = shape(panel,12,line); setOnClickListener { stopRecording(); utterances.clear(); partial = ""; lastFinal = null; render() } }
-        actions.addView(share, LinearLayout.LayoutParams(0,dp(48),1f); actions.addView(clear, LinearLayout.LayoutParams(0,dp(48),1f)
+ 
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val share = Button(this).apply {
+            text = "Поделиться"
+            isAllCaps = false
+            setTextColor(gold)
+            background = shape(android.graphics.Color.rgb(28, 25, 19), 12, line)
+            setOnClickListener { shareNotes() }
+        }
+
+        val clear = Button(this).apply {
+            text = "Новый разговор"
+            isAllCaps = false
+            setTextColor(muted)
+            background = shape(panel, 12, line)
+            setOnClickListener {
+                stopRecording()
+                utterances.clear()
+                partial = ""
+                lastFinal = null
+                render()
+            }
+        }
+
+        actions.addView(share, LinearLayout.LayoutParams(0, dp(48), 1f))
+        actions.addView(clear, LinearLayout.LayoutParams(0, dp(48), 1f))
+
+        transcriptCard.addView(actions)
+        root.addView(transcriptCard)
+
         transcriptCard.addView(actions); root.addView(transcriptCard)
         space(root,18)
         root.addView(label("Запись работает только пока приложение открыто.\nКонспект — автоматический черновик, проверьте важные детали.",11f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
