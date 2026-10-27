@@ -65,7 +65,7 @@ class MainActivity : Activity() {
         content.addView(summaryText)
         content.addView(TextView(this).apply { text = "\nРАСШИФРОВКА"; textSize = 20f; setPadding(0, 16, 0, 8) })
         content.addView(transcriptText)
-        val scroll = ScrollView(this).apply { fillViewport = true; addView(content) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; addView(content) }
         setContentView(scroll)
     }
 
