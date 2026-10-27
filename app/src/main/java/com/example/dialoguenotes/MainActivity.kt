@@ -42,31 +42,79 @@ class MainActivity : Activity() {
     }
 
     private fun buildUi() {
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(24, 32, 24, 24)
+        val bg = android.graphics.Color.rgb(11, 11, 12)
+        val panel = android.graphics.Color.rgb(20, 20, 20)
+        val gold = android.graphics.Color.rgb(197, 164, 93)
+        val ivory = android.graphics.Color.rgb(244, 240, 231)
+        val muted = android.graphics.Color.rgb(155, 151, 142)
+        val line = android.graphics.Color.rgb(58, 50, 36)
+        fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
+        fun shape(color: Int, radius: Int = 18, stroke: Int = 0) = android.graphics.drawable.GradientDrawable().apply {
+            setColor(color); cornerRadius = dp(radius).toFloat()
+            if (stroke != 0) setStroke(dp(1), stroke)
         }
-        val heading = TextView(this).apply { text = "Конспект диалога"; textSize = 26f }
-        statusText = TextView(this).apply { textSize = 15f; setPadding(0, 12, 0, 12) }
-        startButton = Button(this).apply { text = "Начать запись" }
-        val shareButton = Button(this).apply { text = "Поделиться конспектом"; setOnClickListener { shareNotes() } }
-        val clearButton = Button(this).apply {
-            text = "Новый разговор"
-            setOnClickListener { stopRecording(); utterances.clear(); partial = ""; lastFinal = null; render() }
+        fun label(value: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+            text = value; textSize = size; setTextColor(color); if (bold) setTypeface(typeface, android.graphics.Typeface.BOLD)
         }
-        transcriptText = TextView(this).apply { textSize = 16f; setTextIsSelectable(true) }
-        summaryText = TextView(this).apply { textSize = 16f; setTextIsSelectable(true) }
-        content.addView(heading)
-        content.addView(statusText)
-        content.addView(startButton)
-        content.addView(shareButton)
-        content.addView(clearButton)
-        content.addView(TextView(this).apply { text = "КОНСПЕКТ"; textSize = 20f; setPadding(0, 20, 0, 8) })
-        content.addView(summaryText)
-        content.addView(TextView(this).apply { text = "\nРАСШИФРОВКА"; textSize = 20f; setPadding(0, 16, 0, 8) })
-        content.addView(transcriptText)
-        val scroll = ScrollView(this).apply { isFillViewport = true; addView(content) }
-        setContentView(scroll)
+        fun space(parent: LinearLayout, height: Int) { parent.addView(View(this), LinearLayout.LayoutParams(1, dp(height))) }
+        fun card() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18),dp(18),dp(18),dp(18)); background = shape(panel, 22, line) }
+
+        window.statusBarColor = bg
+        window.navigationBarColor = bg
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20),dp(18),dp(20),dp(28)); setBackgroundColor(bg) }
+        val brand = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL }
+        brand.addView(label("≋", 34f, bg, true).apply { gravity = android.view.Gravity.CENTER; background = shape(gold, 16) }, LinearLayout.LayoutParams(dp(54),dp(54)))
+        val brandText = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(12,0,0,0) }
+        brandText.addView(label("Nigga Tekst", 23f, android.graphics.Color.rgb(229,209,160), true))
+        brandText.addView(label("INTELLIGENT VOICE NOTES", 9f, muted, true))
+        brand.addView(brandText, LinearLayout.LayoutParams(0,-2,1f))
+        brand.addView(label("⋯", 27f, gold).apply { gravity = android.view.Gravity.CENTER; background = shape(android.graphics.Color.rgb(28,25,19), 24, line) }, LinearLayout.LayoutParams(dp(44),dp(44)))
+        root.addView(brand)
+
+        space(root,28)
+        root.addView(label("ВАШЕ ПРОСТРАНСТВО",11f,gold,true))
+        space(root,8)
+        root.addView(label("Важное остаётся.",29f,ivory,true))
+        root.addView(label("Лишнее исчезает.",29f,gold,true))
+        space(root,8)
+        root.addView(label("Каждый разговор — в понятный конспект.",14f,muted))
+        space(root,22)
+
+        val record = card().apply { gravity = android.view.Gravity.CENTER_HORIZONTAL }
+        record.addView(label("●", 38f, gold).apply { gravity = android.view.Gravity.CENTER; background = shape(android.graphics.Color.rgb(40,33,21), 70, gold) }, LinearLayout.LayoutParams(dp(112),dp(112)))
+        space(record,14)
+        record.addView(label("Запишите разговор",20f,ivory,true))
+        space(record,7)
+        record.addView(label("Получите расшифровку и структурированный\nчерновик конспекта",13f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        space(record,14)
+        statusText = label("● ЗАПИСЬ ОСТАНОВЛЕНА",11f,gold,true).apply { gravity = android.view.Gravity.CENTER }
+        record.addView(statusText)
+        space(record,14)
+        startButton = Button(this).apply { text = "НАЧАТЬ ЗАПИСЬ"; isAllCaps = false; textSize = 13f; setTextColor(bg); background = shape(gold,14) }
+        record.addView(startButton, LinearLayout.LayoutParams(-1,dp(52)))
+        space(root,22); root.addView(record)
+
+        space(root,26)
+        root.addView(label("ПОСЛЕДНИЕ ЗАМЕТКИ",11f,gold,true))
+        space(root,12)
+        val summaryCard = card()
+        summaryCard.addView(label("КОНСПЕКТ",11f,gold,true)); space(summaryCard,10)
+        summaryText = label("Конспект появится после первых распознанных фраз.",14f,ivory)
+        summaryText.setLineSpacing(4f,1f); summaryCard.addView(summaryText)
+        root.addView(summaryCard)
+        space(root,12)
+        val transcriptCard = card()
+        transcriptCard.addView(label("РАСШИФРОВКА РАЗГОВОРА",11f,gold,true)); space(transcriptCard,10)
+        transcriptText = label("Пока нет распознанной речи",14f,muted).apply { setLineSpacing(5f,1f); setTextIsSelectable(true) }
+        transcriptCard.addView(transcriptText); space(transcriptCard,14)
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val share = Button(this).apply { text = "Поделиться"; isAllCaps = false; setTextColor(gold); background = shape(android.graphics.Color.rgb(28,25,19),12,line); setOnClickListener { shareNotes() } }
+        val clear = Button(this).apply { text = "Новый разговор"; isAllCaps = false; setTextColor(muted); background = shape(panel,12,line); setOnClickListener { stopRecording(); utterances.clear(); partial = ""; lastFinal = null; render() } }
+        actions.addView(share, LinearLayout.LayoutParams(0,dp(48),1f); actions.addView(clear, LinearLayout.LayoutParams(0,dp(48),1f)
+        transcriptCard.addView(actions); root.addView(transcriptCard)
+        space(root,18)
+        root.addView(label("Запись работает только пока приложение открыто.\nКонспект — автоматический черновик, проверьте важные детали.",11f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        setContentView(ScrollView(this).apply { isFillViewport = true; setBackgroundColor(bg); addView(root) })
     }
 
     private fun requestAndStart() {

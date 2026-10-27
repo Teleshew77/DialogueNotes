@@ -1,25 +1,16 @@
-# Конспект диалога — Android MVP
+# Nigga Tekst — Android project
 
-Приложение для смартфона Android: при нажатии «Начать запись» распознаёт русскую речь с микрофона, отображает живую расшифровку и автоматически формирует черновик конспекта (главное, решения, задачи, вопросы). «Поделиться конспектом» позволяет сохранить текст в любое приложение через стандартное меню Android.
+Luxury Dark interface (onyx/graphite/gold), Russian speech recognition, draft summaries, transcript sharing.
 
-## Запуск
-1. Откройте эту папку как проект в Android Studio (JDK 17, Android SDK 35).
-2. Дождитесь Gradle Sync и нажмите Run на физическом Android-смартфоне (Android 8.0+).
-3. Разрешите доступ к микрофону и нажмите «Начать запись».
+## Privacy and safety baseline
+- The app requests microphone permission only.
+- It does not contain app-authored network calls, analytics, ads, trackers, or dynamic code loading.
+- It stops recognition when the app goes to the background; it does not secretly record in the background.
+- Speech recognition is delegated to the Android speech-recognition service. That service may process audio according to the provider's own policy and may require internet access.
+- The summary is rule-based, not an AI-generated verified transcript. Review important details.
 
-## Важно
-- Это MVP с **правилами выделения важных фраз**, а не большой ИИ-моделью. Формулировки конспекта нужно перепроверять.
-- Распознавание зависит от системного провайдера Android; на некоторых устройствах ему нужен интернет, а голосовые данные могут обрабатываться службой распознавания.
-- Обрабатывается речь, доступная **микрофону**. Внутреннее аудио обычных телефонных вызовов и чужих приложений Android таким способом не предоставляется.
-- Микрофон работает **только пока приложение открыто на экране**. При сворачивании запись прекращается. Для записи в фоне требуется отдельная реализация foreground service с уведомлением и соблюдением правил ОС.
-- Во время коротких перезапусков системного SpeechRecognizer возможны пробелы в расшифровке. Для действительно непрерывного распознавания в дальнейшем стоит подключить потоковый ASR-движок.
-- Текст хранится лишь в памяти запущенного экрана и при закрытии процесса исчезает, если вы не сохранили его через меню «Поделиться».
-- Перед записью беседы получите необходимое согласие участников и соблюдайте местные законы.
+## Build test APK
+GitHub Actions → Build Android APK → Run workflow. Download artifact `Nigga-Tekst-Android-test-APK`; it contains `app-debug.apk`.
 
-## Получить установочный APK без Android Studio (через GitHub)
-1. Создайте **пустой** репозиторий на GitHub и загрузите туда содержимое папки `DialogueNotesAndroid` **включая скрытую папку `.github`** (проще через GitHub Desktop или git). Не загружайте только ZIP как единственный файл.
-2. На странице репозитория откройте **Actions** → **Build Android APK** → **Run workflow** (либо сборка начнётся после загрузки в `main`).
-3. После успешной сборки откройте выполненный запуск Actions и скачайте артефакт **DialogueNotes-install-APK**. Внутри архива находится **app-debug.apk**.
-4. Передайте `app-debug.apk` на Android-телефон, откройте файл и разрешите установку из данного источника, если телефон попросит. Требуется Android 8+.
-
-Это тестовый APK, автоматически подписанный стандартным *debug*-ключом сборочной среды. Для размещения в магазине приложений нужна отдельная release-сборка с защищённым ключом подписи. При повторных сборках на GitHub debug-подпись может измениться: обновление поверх старой версии может потребовать удаления старой версии.
+## Important release note
+This workflow creates a **debug/test APK**, not a Play Store release. Do not publish a debug APK. A production release should be built as a signed release and distributed through Google Play internal testing / Play App Signing. Never commit a signing keystore or passwords to the repository. A Play Protect warning must be investigated using the exact warning and APK; changing the app name or signing it does not guarantee the warning disappears.
