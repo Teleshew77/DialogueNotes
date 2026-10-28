@@ -36,9 +36,47 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        buildUi()
-        render()
-        startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
+        try {
+            buildUi()
+            render()
+            startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
+        } catch (error: Throwable) {
+            // Diagnostic fallback: do not hide the actual startup exception.
+            android.util.Log.e("NiggaTekstStartup", "Failed to create main screen", error)
+            showStartupFailure(error)
+        }
+    }
+
+    private fun showStartupFailure(error: Throwable) {
+        val details = android.util.Log.getStackTraceString(error)
+        val backgroundColor = android.graphics.Color.rgb(11, 11, 12)
+        val goldColor = android.graphics.Color.rgb(197, 164, 93)
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 48, 32, 32)
+            setBackgroundColor(backgroundColor)
+        }
+        body.addView(TextView(this).apply {
+            text = "Nigga Tekst — диагностика запуска"
+            textSize = 21f
+            setTextColor(goldColor)
+        })
+        body.addView(TextView(this).apply {
+            text = "Ошибка при открытии приложения. Скопируйте текст ниже и отправьте его разработчику.\n\n" + details
+            textSize = 13f
+            setTextColor(android.graphics.Color.WHITE)
+            setTextIsSelectable(true)
+            setPadding(0, 24, 0, 24)
+        })
+        body.addView(Button(this).apply {
+            text = "Копировать ошибку"
+            setOnClickListener {
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Nigga Tekst startup error", details))
+                Toast.makeText(this@MainActivity, "Ошибка скопирована", Toast.LENGTH_SHORT).show()
+            }
+        })
+        setContentView(ScrollView(this).apply { addView(body) })
     }
 
     private fun buildUi() {
@@ -110,7 +148,8 @@ class MainActivity : Activity() {
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val share = Button(this).apply { text = "Поделиться"; isAllCaps = false; setTextColor(gold); background = shape(android.graphics.Color.rgb(28,25,19),12,line); setOnClickListener { shareNotes() } }
         val clear = Button(this).apply { text = "Новый разговор"; isAllCaps = false; setTextColor(muted); background = shape(panel,12,line); setOnClickListener { stopRecording(); utterances.clear(); partial = ""; lastFinal = null; render() } }
-        actions.addView(share, LinearLayout.LayoutParams(0,dp(48),1f); actions.addView(clear, LinearLayout.LayoutParams(0,dp(48),1f)
+        actions.addView(share, LinearLayout.LayoutParams(0, dp(48), 1f))
+        actions.addView(clear, LinearLayout.LayoutParams(0, dp(48), 1f))
         transcriptCard.addView(actions); root.addView(transcriptCard)
         space(root,18)
         root.addView(label("Запись работает только пока приложение открыто.\nКонспект — автоматический черновик, проверьте важные детали.",11f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
