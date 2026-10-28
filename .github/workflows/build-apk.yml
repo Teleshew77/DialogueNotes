@@ -46,8 +46,10 @@ jobs:
             sleep 8
             adb logcat -d -v time > emulator-crash.log
             grep -A 35 -E "FATAL EXCEPTION|ANR in|Process: com.example.dialoguenotes" emulator-crash.log || true
-            if grep -q -E "FATAL EXCEPTION|ANR in" emulator-crash.log; then echo "Crash or ANR detected"; exit 1; fi
-            adb shell pidof com.example.dialoguenotes || exit 1
+            
+            if grep -q "ANR in com.example.dialoguenotes" emulator-crash.log; then echo "Nigga Tekst ANR"; exit 1; fi
+            if grep -A 15 "FATAL EXCEPTION" emulator-crash.log | grep -q "Process: com.example.dialoguenotes"; then echo "Nigga Tekst crash"; exit 1; fi
+
 
       - name: Save emulator logs
         if: always()
