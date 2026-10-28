@@ -36,47 +36,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        try {
-            buildUi()
-            render()
-            startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
-        } catch (error: Throwable) {
-            // Diagnostic fallback: do not hide the actual startup exception.
-            android.util.Log.e("NiggaTekstStartup", "Failed to create main screen", error)
-            showStartupFailure(error)
-        }
-    }
-
-    private fun showStartupFailure(error: Throwable) {
-        val details = android.util.Log.getStackTraceString(error)
-        val backgroundColor = android.graphics.Color.rgb(11, 11, 12)
-        val goldColor = android.graphics.Color.rgb(197, 164, 93)
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 48, 32, 32)
-            setBackgroundColor(backgroundColor)
-        }
-        body.addView(TextView(this).apply {
-            text = "Nigga Tekst — диагностика запуска"
-            textSize = 21f
-            setTextColor(goldColor)
-        })
-        body.addView(TextView(this).apply {
-            text = "Ошибка при открытии приложения. Скопируйте текст ниже и отправьте его разработчику.\n\n" + details
-            textSize = 13f
-            setTextColor(android.graphics.Color.WHITE)
-            setTextIsSelectable(true)
-            setPadding(0, 24, 0, 24)
-        })
-        body.addView(Button(this).apply {
-            text = "Копировать ошибку"
-            setOnClickListener {
-                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Nigga Tekst startup error", details))
-                Toast.makeText(this@MainActivity, "Ошибка скопирована", Toast.LENGTH_SHORT).show()
-            }
-        })
-        setContentView(ScrollView(this).apply { addView(body) })
+        buildUi()
+        render()
+        startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
     }
 
     private fun buildUi() {
