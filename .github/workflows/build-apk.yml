@@ -50,6 +50,10 @@ jobs:
             if grep -q "ANR in com.example.dialoguenotes" emulator-crash.log; then echo "Nigga Tekst ANR"; exit 1; fi
             if grep -A 15 "FATAL EXCEPTION" emulator-crash.log | grep -q "Process: com.example.dialoguenotes"; then echo "Nigga Tekst crash"; exit 1; fi
 
+            echo "Checking Nigga Tekst process..."
+            adb shell pidof com.example.dialoguenotes || exit 1
+            echo "Nigga Tekst process is running"
+
 
       - name: Save emulator logs
         if: always()
