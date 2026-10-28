@@ -36,9 +36,21 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        buildUi()
-        render()
-        startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
+        try {
+            buildUi()
+            render()
+            startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
+        } catch (e: Exception) {
+            android.util.Log.e("NiggaTekst", "Main screen initialization failed", e)
+            val message = TextView(this).apply {
+                text = "Ошибка запуска экрана. Перезапустите приложение.\n\n${e.javaClass.simpleName}: ${e.message.orEmpty()}"
+                textSize = 16f
+                setTextColor(android.graphics.Color.WHITE)
+                setPadding(32, 48, 32, 32)
+                setBackgroundColor(android.graphics.Color.rgb(11, 11, 12))
+            }
+            setContentView(message)
+        }
     }
 
     private fun buildUi() {
@@ -136,9 +148,15 @@ class MainActivity : Activity() {
             return
         }
         recording = true
-        recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
-        render()
-        listen()
+        try {
+            recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
+            render()
+            listen()
+        } catch (e: Exception) {
+            android.util.Log.e("NiggaTekst", "Speech recognizer unavailable", e)
+            stopRecording()
+            Toast.makeText(this, "Служба распознавания недоступна: ${e.message.orEmpty()}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun listen() {

@@ -1,9 +1,16 @@
-# Nigga Tekst — Android test build
+# Nigga Tekst — Android (проект для тестирования)
 
-This project includes a GitHub Actions workflow that builds the debug APK and then launches the actual app in an Android emulator using an instrumentation smoke test. The APK artifact is uploaded only if the launch test passes.
+Чёрно-золотой интерфейс, значок на домашнем экране, распознавание речи по нажатию кнопки, черновой конспект и экспорт текста.
 
-## GitHub
-Upload the contents of this project to the root of your repository, preserving `.github/workflows` and `app/src/androidTest`. Open Actions and inspect the latest run.
+## Что изменилось
+- Собственные иконки для Android 8–15 (включая PNG для стандартных лаунчеров).
+- Защита создания экрана и инициализации распознавания от некоторых исключений.
+- Автоматический smoke-test на Android 11: запуск, проверка активного экрана, живого процесса и crash/ANR именно приложения.
+- Отчёт `Nigga-Tekst-test-report` с logcat, activity/window dumps и screenshot даже при провале теста.
+- APK появляется в артефактах только когда этап эмулятора завершился успешно.
 
-## Important
-A successful emulator launch test confirms that the main screen starts in the CI emulator; it does not prove compatibility with every Xiaomi/MIUI device or resolve Google Play Protect classification. Keep Play Protect enabled.
+## Как запустить
+Загрузите **содержимое** этой папки в корень репозитория GitHub, сохранив `.github`. Actions запускается при коммите в main. Скачайте `Nigga-Tekst-Android-APK` после зелёного теста.
+
+## Важные ограничения
+Успешный запуск в эмуляторе не доказывает работу микрофона и распознавания на физическом телефоне. Тест на Android 11 не гарантирует совместимость с MIUI, отсутствие предупреждений Play Protect или отсутствие всех возможных вылетов. Проверка APK на вредоносность и подпись release-версии требуют отдельного этапа. Код не умеет записывать звонки и не ведёт запись в фоне.
