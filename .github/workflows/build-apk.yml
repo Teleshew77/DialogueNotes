@@ -35,10 +35,12 @@ jobs:
       - name: Test Android 11 launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 30
-          target: default
+         
+          api-level: 33
+          target: google_apis
           arch: x86_64
-          profile: pixel_2
+          profile: pixel_4
+
           emulator-boot-timeout: 900
           disable-animations: false
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none
