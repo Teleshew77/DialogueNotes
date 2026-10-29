@@ -1,5 +1,4 @@
-
-name: Build and Test Nigga Tekst
+name: Nigga Tekst - Android 11 Stable Launch Test
 
 on:
   push:
@@ -10,64 +9,48 @@ permissions:
   contents: read
 
 jobs:
-  build-and-test:
+  test-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-
+    timeout-minutes: 30
     steps:
-      - name: Checkout project
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Gradle
+      - name: Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
 
       - name: Build APK
-        run: gradle --no-daemon :app:assembleDebug
-     
-      - name: Test app in emulator
+        run: gradle --no-daemon :app:assembleDebug --stacktrace
+
+      - name: Test Android 11 launch
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
-          target: google_apis
+          target: default
           arch: x86_64
           profile: pixel_2
           emulator-boot-timeout: 900
-          disable-animations: true
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -camera-back none -camera-front none
-          script: |
+          disable-animations: false
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -camera-back none -camera-front none
+          script: bash .github/scripts/verify-launch.sh
 
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb logcat -c
-            timeout 25s adb shell am start -W -n com.example.dialoguenotes/.MainActivity || true
-            sleep 8
-            adb logcat -d -v time > emulator-crash.log
-            grep -A 35 -E "FATAL EXCEPTION|ANR in|Process: com.example.dialoguenotes" emulator-crash.log || true
-            
-            if grep -q "ANR in com.example.dialoguenotes" emulator-crash.log; then echo "Nigga Tekst ANR"; exit 1; fi
-            if grep -A 15 "FATAL EXCEPTION" emulator-crash.log | grep -q "Process: com.example.dialoguenotes"; then echo "Nigga Tekst crash"; exit 1; fi
-
-            echo "Checking Nigga Tekst process..."
-            adb shell pidof com.example.dialoguenotes || exit 1
-            echo "Nigga Tekst process is running"
-
-
-      - name: Save emulator logs
+      - name: Upload diagnostics (even on failure)
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: Nigga-Tekst-emulator-logs
-          path: emulator-crash.log
+          name: Nigga-Tekst-test-report
+          path: test-report/
           if-no-files-found: ignore
 
-      - name: Upload tested APK
+      - name: Upload APK only after successful launch test
         uses: actions/upload-artifact@v4
         with:
           name: Nigga-Tekst-Android-APK
