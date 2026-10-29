@@ -49,7 +49,15 @@ jobs:
             echo "Waiting for Android to stabilize..."
             sleep 60
             adb shell input keyevent 82
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
+            
+            echo "Checking Android package manager..."
+            adb wait-for-device
+            sleep 20
+            adb shell cmd package list packages > /dev/null
+            echo "Installing Nigga Tekst..."
+            adb install --no-streaming -r app/build/outputs/apk/debug/app-debug.apk
+            echo "APK installed successfully"
+
 
             adb logcat -c
             timeout 45s adb shell am start -n com.example.dialoguenotes/.MainActivity
