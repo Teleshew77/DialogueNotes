@@ -2,6 +2,7 @@ package com.example.dialoguenotes
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -13,6 +14,7 @@ import android.speech.SpeechRecognizer
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -20,6 +22,9 @@ import android.widget.Toast
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
+import org.json.JSONArray
+import org.json.JSONObject
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -33,10 +38,17 @@ class MainActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var transcriptText: TextView
     private lateinit var summaryText: TextView
+    private val prefs by lazy { getSharedPreferences("nigga_tekst_conversations_v1", MODE_PRIVATE) }
+    private var conversationId: String = UUID.randomUUID().toString()
+    private var conversationTitle: String = ""
+    private var createdAt: Long = System.currentTimeMillis()
+    private var updatedAt: Long = createdAt
+    private var hasSavedContent: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
+            restoreCurrentConversation()
             buildUi()
             render()
             startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
@@ -80,8 +92,20 @@ class MainActivity : Activity() {
         brandText.addView(label("Nigga Tekst", 23f, android.graphics.Color.rgb(229,209,160), true))
         brandText.addView(label("INTELLIGENT VOICE NOTES", 9f, muted, true))
         brand.addView(brandText, LinearLayout.LayoutParams(0,-2,1f))
-        brand.addView(label("⋯", 27f, gold).apply { gravity = android.view.Gravity.CENTER; background = shape(android.graphics.Color.rgb(28,25,19), 24, line) }, LinearLayout.LayoutParams(dp(44),dp(44)))
+        brand.addView(label("☰", 24f, gold).apply {
+            gravity = android.view.Gravity.CENTER
+            contentDescription = "История разговоров"
+            background = shape(android.graphics.Color.rgb(28,25,19), 24, line)
+            setOnClickListener { showHistory() }
+        }, LinearLayout.LayoutParams(dp(44),dp(44)))
         root.addView(brand)
+        val historyButton = Button(this).apply {
+            text = "ИСТОРИЯ РАЗГОВОРОВ"; isAllCaps = false
+            setTextColor(gold); background = shape(panel, 12, line)
+            setOnClickListener { showHistory() }
+        }
+        space(root, 12)
+        root.addView(historyButton, LinearLayout.LayoutParams(-1, dp(45)))
 
         space(root,28)
         root.addView(label("ВАШЕ ПРОСТРАНСТВО",11f,gold,true))
@@ -121,7 +145,7 @@ class MainActivity : Activity() {
         transcriptCard.addView(transcriptText); space(transcriptCard,14)
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val share = Button(this).apply { text = "Поделиться"; isAllCaps = false; setTextColor(gold); background = shape(android.graphics.Color.rgb(28,25,19),12,line); setOnClickListener { shareNotes() } }
-        val clear = Button(this).apply { text = "Новый разговор"; isAllCaps = false; setTextColor(muted); background = shape(panel,12,line); setOnClickListener { stopRecording(); utterances.clear(); partial = ""; lastFinal = null; render() } }
+        val clear = Button(this).apply { text = "Новый разговор"; isAllCaps = false; setTextColor(muted); background = shape(panel,12,line); setOnClickListener { newConversation() } }
         actions.addView(share, LinearLayout.LayoutParams(0, dp(48), 1f))
         actions.addView(clear, LinearLayout.LayoutParams(0, dp(48), 1f))
         transcriptCard.addView(actions); root.addView(transcriptCard)
@@ -192,6 +216,7 @@ class MainActivity : Activity() {
             if (final.isNotBlank() && final != lastFinal) {
                 utterances.add(final)
                 lastFinal = final
+                persistConversation()
             }
             partial = ""
             render()
@@ -226,6 +251,7 @@ class MainActivity : Activity() {
         recognizer?.destroy()
         recognizer = null
         partial = ""
+        persistConversation()
         render()
     }
 
@@ -247,6 +273,198 @@ class MainActivity : Activity() {
             putExtra(Intent.EXTRA_TEXT, body)
         }
         startActivity(Intent.createChooser(intent, "Сохранить или отправить конспект"))
+    }
+
+    // Only confirmed speech is stored: partial recognition is never persisted.
+    // Each conversation is saved locally, not sent to a server by this code.
+    private fun conversationList(): JSONArray = try {
+        JSONArray(prefs.getString("history", "[]") ?: "[]")
+    } catch (e: Exception) {
+        android.util.Log.e("NiggaTekst", "Could not read history", e)
+        JSONArray()
+    }
+
+    private fun persistConversation(): Boolean {
+        if (utterances.isEmpty()) return true
+        return try {
+            updatedAt = System.currentTimeMillis()
+            val array = conversationList()
+            val updated = JSONArray()
+            val obj = JSONObject().apply {
+                put("id", conversationId)
+                put("title", conversationTitle.ifBlank { defaultTitle() })
+                put("created", createdAt)
+                put("updated", updatedAt)
+                put("phrases", JSONArray(utterances))
+            }
+            updated.put(obj)
+            for (i in 0 until array.length()) {
+                val item = array.optJSONObject(i) ?: continue
+                if (item.optString("id") != conversationId) updated.put(item)
+            }
+            val saved = prefs.edit()
+                .putString("history", updated.toString())
+                .putString("current_id", conversationId)
+                .commit()
+            hasSavedContent = saved
+            if (!saved) android.util.Log.e("NiggaTekst", "Conversation persistence failed")
+            saved
+        } catch (e: Exception) {
+            android.util.Log.e("NiggaTekst", "Could not save conversation", e)
+            false
+        }
+    }
+
+    private fun defaultTitle(): String =
+        "Разговор " + SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()).format(Date(createdAt))
+
+    private fun restoreCurrentConversation() {
+        val savedId = prefs.getString("current_id", null) ?: return
+        val array = conversationList()
+        for (i in 0 until array.length()) {
+            val obj = array.optJSONObject(i) ?: continue
+            if (obj.optString("id") == savedId) {
+                loadConversation(obj, false)
+                return
+            }
+        }
+    }
+
+    private fun loadConversation(obj: JSONObject, redraw: Boolean = true) {
+        conversationId = obj.optString("id", UUID.randomUUID().toString())
+        conversationTitle = obj.optString("title", "")
+        createdAt = obj.optLong("created", System.currentTimeMillis())
+        updatedAt = obj.optLong("updated", createdAt)
+        utterances.clear()
+        val phrases = obj.optJSONArray("phrases") ?: JSONArray()
+        for (j in 0 until phrases.length()) {
+            val phrase = phrases.optString(j).trim()
+            if (phrase.isNotBlank()) utterances.add(phrase)
+        }
+        hasSavedContent = utterances.isNotEmpty()
+        lastFinal = utterances.lastOrNull()
+        partial = ""
+        prefs.edit().putString("current_id", conversationId).apply()
+        if (redraw) render()
+    }
+
+    private fun newConversation() {
+        stopRecording()
+        if (!persistConversation()) {
+            Toast.makeText(this, "Не удалось сохранить разговор. Новый не создан.", Toast.LENGTH_LONG).show()
+            return
+        }
+        conversationId = UUID.randomUUID().toString()
+        conversationTitle = ""
+        createdAt = System.currentTimeMillis()
+        updatedAt = createdAt
+        hasSavedContent = false
+        utterances.clear()
+        partial = ""
+        lastFinal = null
+        prefs.edit().remove("current_id").apply()
+        render()
+    }
+
+    private fun showHistory() {
+        val history = conversationList()
+        if (history.length() == 0) {
+            AlertDialog.Builder(this).setTitle("История разговоров")
+                .setMessage("Пока нет сохранённых разговоров. Распознанные фразы сохраняются автоматически.")
+                .setPositiveButton("Понятно", null).show()
+            return
+        }
+        val entries = (0 until history.length()).mapNotNull { history.optJSONObject(it) }
+        val labels = entries.map { obj ->
+            val count = obj.optJSONArray("phrases")?.length() ?: 0
+            "${obj.optString("title", "Разговор")}  ·  $count фраз"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("История разговоров")
+            .setItems(labels) { _, which -> showConversationActions(entries[which]) }
+            .setNegativeButton("Закрыть", null)
+            .show()
+    }
+
+    private fun showConversationActions(obj: JSONObject) {
+        val title = obj.optString("title", "Разговор")
+        AlertDialog.Builder(this).setTitle(title)
+            .setItems(arrayOf("Открыть", "Переименовать", "Удалить")) { _, which ->
+                when (which) {
+                    0 -> {
+                        stopRecording()
+                        if (persistConversation()) loadConversation(obj)
+                        else Toast.makeText(this, "Не удалось сохранить текущий разговор", Toast.LENGTH_LONG).show()
+                    }
+                    1 -> renameConversation(obj)
+                    2 -> confirmDelete(obj)
+                }
+            }.setNegativeButton("Отмена", null).show()
+    }
+
+    private fun renameConversation(obj: JSONObject) {
+        val input = EditText(this).apply {
+            setSingleLine(true)
+            setText(obj.optString("title", ""))
+            selectAll()
+        }
+        AlertDialog.Builder(this).setTitle("Название разговора")
+            .setView(input)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotBlank()) {
+                    obj.put("title", name)
+                    if (obj.optString("id") == conversationId) conversationTitle = name
+                    updateStoredItem(obj)
+                }
+            }.setNegativeButton("Отмена", null).show()
+    }
+
+    private fun updateStoredItem(item: JSONObject) {
+        val old = conversationList()
+        val next = JSONArray()
+        for (i in 0 until old.length()) {
+            val obj = old.optJSONObject(i) ?: continue
+            next.put(if (obj.optString("id") == item.optString("id")) item else obj)
+        }
+        if (!prefs.edit().putString("history", next.toString()).commit()) {
+            Toast.makeText(this, "Не удалось сохранить изменение", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun confirmDelete(obj: JSONObject) {
+        AlertDialog.Builder(this).setTitle("Удалить разговор?")
+            .setMessage("Вся расшифровка этого разговора будет удалена с устройства.")
+            .setPositiveButton("Удалить") { _, _ ->
+                val old = conversationList()
+                val next = JSONArray()
+                val id = obj.optString("id")
+                for (i in 0 until old.length()) {
+                    val item = old.optJSONObject(i) ?: continue
+                    if (item.optString("id") != id) next.put(item)
+                }
+                if (prefs.edit().putString("history", next.toString()).commit()) {
+                    if (id == conversationId) {
+                        stopRecording()
+                        conversationId = UUID.randomUUID().toString()
+                        conversationTitle = ""
+                        createdAt = System.currentTimeMillis()
+                        updatedAt = createdAt
+                        utterances.clear()
+                        partial = ""
+                        lastFinal = null
+                        hasSavedContent = false
+                        prefs.edit().remove("current_id").apply()
+                        render()
+                    }
+                } else Toast.makeText(this, "Не удалось удалить запись", Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton("Отмена", null).show()
+    }
+
+    override fun onPause() {
+        persistConversation()
+        super.onPause()
     }
 
     override fun onStop() {
