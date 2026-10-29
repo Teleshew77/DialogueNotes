@@ -55,7 +55,14 @@ jobs:
             timeout 45s adb shell am start -n com.example.dialoguenotes/.MainActivity
             sleep 15
             adb logcat -d -v time > emulator-crash.log
+            
+            echo "Waiting for app screen..."
+            sleep 20
             adb exec-out screencap -p > screenshot.png
+            echo "Checking active screen..."
+            adb shell dumpsys window > window-state.txt
+            grep -E "mCurrentFocus|mFocusedApp" window-state.txt || true
+
             adb shell pidof com.example.dialoguenotes
             adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity|ResumedActivity" | grep com.example.dialoguenotes
             echo "NIGGA TEKST LAUNCH TEST PASSED"
