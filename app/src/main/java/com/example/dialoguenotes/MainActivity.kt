@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private var partial = ""
     private var restartQueued = false
     private var lastFinal: String? = null
+    private var restartFailures = 0
     private lateinit var startButton: Button
     private lateinit var statusText: TextView
     private lateinit var transcriptText: TextView
@@ -172,6 +173,7 @@ class MainActivity : Activity() {
             return
         }
         recording = true
+        restartFailures = 0
         try {
             recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
             render()
@@ -218,9 +220,10 @@ class MainActivity : Activity() {
                 lastFinal = final
                 persistConversation()
             }
+            restartFailures = 0
             partial = ""
             render()
-            scheduleRestart(300)
+            scheduleRestart(500)
         }
         override fun onError(error: Int) {
             partial = ""
@@ -232,7 +235,13 @@ class MainActivity : Activity() {
                     error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
                     stopRecording()
                     Toast.makeText(this@MainActivity, "Ошибка распознавания: $error", Toast.LENGTH_LONG).show()
-                } else scheduleRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1100 else 550)
+                } else {
+                    restartFailures++
+                    if (restartFailures >= 8) {
+                        stopRecording()
+                        Toast.makeText(this@MainActivity, "Распознавание временно недоступно. Сохранённые фразы остались в истории.", Toast.LENGTH_LONG).show()
+                    } else scheduleRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1800L else 850L * restartFailures)
+                }
             }
         }
     }
@@ -247,8 +256,8 @@ class MainActivity : Activity() {
         recording = false
         restartQueued = false
         handler.removeCallbacksAndMessages(null)
-        recognizer?.cancel()
-        recognizer?.destroy()
+        try { recognizer?.cancel() } catch (_: Exception) { }
+        try { recognizer?.destroy() } catch (_: Exception) { }
         recognizer = null
         partial = ""
         persistConversation()

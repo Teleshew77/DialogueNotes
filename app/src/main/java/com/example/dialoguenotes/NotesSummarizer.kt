@@ -1,38 +1,30 @@
 package com.example.dialoguenotes
 
-/** Rule-based draft of meeting notes; no AI or external API is used. */
+/** Transparent, offline rules; does not fabricate people, deadlines or decisions. */
 object NotesSummarizer {
     fun create(utterances: List<String>): String {
-        if (utterances.isEmpty()) return "Конспект появится после первых распознанных фраз."
         val lines = utterances.map { it.trim().replace(Regex("\\s+"), " ") }
-            .filter { it.isNotEmpty() }
-            .distinct()
-        val decisions = lines.filter { it.containsAny("решили", "договорились", "утвердили", "приняли решение", "согласовали") }
-        val tasks = lines.filter { it.containsAny("нужно", "надо", "сделать", "подготовить", "отправить", "проверить", "до пятницы", "к сроку", "задача") }
-        val questions = lines.filter { it.contains('?') || it.containsAny("вопрос", "уточнить", "непонятно") }
-        val highlights = lines.filterNot { it in decisions || it in tasks || it in questions }
-            .sortedByDescending { score(it) }
-            .take(5)
-            .sortedBy { lines.indexOf(it) }
+            .filter { it.isNotBlank() }.distinct()
+        if (lines.isEmpty()) return "Конспект появится после первых распознанных фраз."
+        fun contains(text: String, vararg words: String) = words.any { text.contains(it, ignoreCase = true) }
+        val decisions = lines.filter { contains(it,"решили", "договорились", "утвердили", "согласовали", "приняли решение") }
+        val tasks = lines.filter { contains(it,"нужно", "надо", "подготовить", "сделать", "проверить", "отправить", "поручили", "задача") }
+        val dates = lines.filter { contains(it,"срок", "до пятницы", "до понедельника", "завтра", "следующ", "к пятнице", "к понедельнику") || Regex("\\b\\d{1,2}[./-]\\d{1,2}\\b").containsMatchIn(it) }
+        val questions = lines.filter { it.contains('?') || contains(it,"вопрос", "уточнить", "непонятно") }
+        val main = lines.filterNot { it in decisions || it in tasks || it in questions }.take(6).ifEmpty { lines.take(6) }
         return buildString {
-            append("ОСНОВНЫЕ МОМЕНТЫ\n")
-            section(highlights.ifEmpty { lines.take(5) })
-            if (decisions.isNotEmpty()) { append("\n\nРЕШЕНИЯ\n"); section(decisions.take(8)) }
-            if (tasks.isNotEmpty()) { append("\n\nЗАДАЧИ / ДОГОВОРЁННОСТИ\n"); section(tasks.take(8)) }
-            if (questions.isNotEmpty()) { append("\n\nВОПРОСЫ\n"); section(questions.take(6)) }
-            append("\n\n(Автоматический черновик: проверьте формулировки.)")
+            fun section(title: String, items: List<String>) {
+                append(title).append('\n')
+                if (items.isEmpty()) append("• Не выделено явно\n")
+                else items.distinct().take(10).forEach { append("• ").append(it).append('\n') }
+                append('\n')
+            }
+            section("ГЛАВНОЕ", main)
+            section("РЕШЕНИЯ", decisions)
+            section("ЗАДАЧИ", tasks)
+            section("СРОКИ И ДАТЫ", dates)
+            section("ОТКРЫТЫЕ ВОПРОСЫ", questions)
+            append("Черновик по распознанной речи. Ответственные и сроки указываются только если прозвучали в разговоре.")
         }
-    }
-
-    private fun String.containsAny(vararg tokens: String) =
-        tokens.any { contains(it, ignoreCase = true) }
-
-    private fun score(line: String): Int {
-        val words = line.split(' ').size
-        return minOf(words, 24) + if (line.containsAny("важно", "срок", "проект", "план", "бюджет")) 10 else 0
-    }
-
-    private fun StringBuilder.section(items: List<String>) {
-        items.forEach { append("• ").append(it).append('\n') }
     }
 }
