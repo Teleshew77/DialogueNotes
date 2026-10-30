@@ -8,13 +8,17 @@ import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.RecognitionListener
-import android.speech.RecognizerIntent
-import android.speech.SpeechRecognizer
+import android.media.MediaRecorder
+import android.media.ToneGenerator
+import android.media.AudioManager
+import android.widget.EditText
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.io.DataOutputStream
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -29,7 +33,13 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val utterances = mutableListOf<String>()
-    private var recognizer: SpeechRecognizer? = null
+    private var mediaRecorder: MediaRecorder? = null
+    private var audioFile: File? = null
+    private var cloudSummary: String = ""
+    private var isUploading = false
+    private var backendUrl = ""
+    private var clientToken = ""
+    private var startMs = 0L
     private var recording = false
     private var partial = ""
     private var restartQueued = false
@@ -52,7 +62,7 @@ class MainActivity : Activity() {
             restoreCurrentConversation()
             buildUi()
             render()
-            startButton.setOnClickListener { if (recording) stopRecording() else requestAndStart() }
+            startButton.setOnClickListener { if (recording) finishRecording() else requestAndStart() }
         } catch (e: Exception) {
             android.util.Log.e("NiggaTekst", "Main screen initialization failed", e)
             val message = TextView(this).apply {
@@ -151,7 +161,7 @@ class MainActivity : Activity() {
         actions.addView(clear, LinearLayout.LayoutParams(0, dp(48), 1f))
         transcriptCard.addView(actions); root.addView(transcriptCard)
         space(root,18)
-        root.addView(label("Запись работает только пока приложение открыто.\nКонспект — автоматический черновик, проверьте важные детали.",11f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
+        root.addView(label("Запись — только с согласием участников. После остановки аудио отправляется на настроенный сервер.\nСпикеры определяются приблизительно; проверяйте имена и решения.",11f,muted).apply { gravity = android.view.Gravity.CENTER; textAlignment = View.TEXT_ALIGNMENT_CENTER })
         setContentView(ScrollView(this).apply { isFillViewport = true; setBackgroundColor(bg); addView(root) })
     }
 
@@ -167,115 +177,189 @@ class MainActivity : Activity() {
         else Toast.makeText(this, "Для распознавания нужен доступ к микрофону", Toast.LENGTH_LONG).show()
     }
 
+    private fun showCloudSettings() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(28, 12, 28, 12)
+        }
+        val url = EditText(this).apply {
+            hint = "https://your-server.example"
+            setSingleLine(true)
+            setText(backendUrl)
+        }
+        val token = EditText(this).apply {
+            hint = "Код доступа к личному серверу"
+            setSingleLine(true)
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        layout.addView(url)
+        layout.addView(token)
+        AlertDialog.Builder(this)
+            .setTitle("Облачная обработка")
+            .setMessage("Используйте только HTTPS. Токен хранится только до закрытия приложения. Никогда не вводите сюда ключ OpenAI API.")
+            .setView(layout)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val v = url.text.toString().trim().trimEnd('/')
+                if (!v.startsWith("https://")) {
+                    Toast.makeText(this, "Нужен HTTPS адрес", Toast.LENGTH_LONG).show()
+                } else {
+                    backendUrl = v
+                    clientToken = token.text.toString()
+                    Toast.makeText(this, "Сервер задан для текущего запуска", Toast.LENGTH_SHORT).show()
+                }
+            }.setNegativeButton("Отмена", null).show()
+    }
+
     private fun startRecording() {
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            Toast.makeText(this, "На устройстве нет службы распознавания речи", Toast.LENGTH_LONG).show()
+        if (backendUrl.isBlank() || clientToken.isBlank()) {
+            showCloudSettings()
+            Toast.makeText(this, "Сначала укажите сервер и код доступа через ⋯", Toast.LENGTH_LONG).show()
             return
         }
-        recording = true
-        restartFailures = 0
+        AlertDialog.Builder(this).setTitle("Запись разговора")
+            .setMessage("Убедитесь, что все участники предупреждены и согласны с записью и отправкой аудио на сервер для обработки.")
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton("Начать") { _, _ -> beginAudio() }.show()
+    }
+
+    private fun cue(start: Boolean) {
         try {
-            recognizer = SpeechRecognizer.createSpeechRecognizer(this).apply { setRecognitionListener(listener) }
-            render()
-            listen()
-        } catch (e: Exception) {
-            android.util.Log.e("NiggaTekst", "Speech recognizer unavailable", e)
-            stopRecording()
-            Toast.makeText(this, "Служба распознавания недоступна: ${e.message.orEmpty()}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private fun listen() {
-        if (!recording) return
-        partial = ""
-        render()
-        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, "ru-RU")
-            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
-        }
-        try { recognizer?.startListening(intent) }
-        catch (e: Exception) {
-            stopRecording()
-            Toast.makeText(this, "Ошибка запуска микрофона: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
-        }
-    }
-
-    private val listener = object : RecognitionListener {
-        override fun onReadyForSpeech(params: Bundle?) = Unit
-        override fun onBeginningOfSpeech() = Unit
-        override fun onRmsChanged(rmsdB: Float) = Unit
-        override fun onBufferReceived(buffer: ByteArray?) = Unit
-        override fun onEndOfSpeech() = Unit
-        override fun onEvent(eventType: Int, params: Bundle?) = Unit
-        override fun onPartialResults(results: Bundle?) {
-            partial = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull().orEmpty()
-            render()
-        }
-        override fun onResults(results: Bundle?) {
-            val final = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-            if (final.isNotBlank() && final != lastFinal) {
-                utterances.add(final)
-                lastFinal = final
-                persistConversation()
+            ToneGenerator(AudioManager.STREAM_NOTIFICATION, 35).apply {
+                startTone(if (start) ToneGenerator.TONE_PROP_ACK else ToneGenerator.TONE_PROP_BEEP2, 110)
+                handler.postDelayed({ release() }, 220)
             }
-            restartFailures = 0
-            partial = ""
+        } catch (_: Exception) { }
+    }
+
+    private fun beginAudio() {
+        try {
+            val f = File(filesDir, "recording_${conversationId}.m4a")
+            audioFile = f
+            @Suppress("DEPRECATION")
+            val recorder = MediaRecorder().apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+                setAudioEncodingBitRate(64000)
+                setAudioSamplingRate(16000)
+                setOutputFile(f.absolutePath)
+                prepare()
+                start()
+            }
+            mediaRecorder = recorder
+            recording = true
+            cue(true)
+            startMs = System.currentTimeMillis()
             render()
-            scheduleRestart(500)
+        } catch (e: Exception) {
+            recording = false
+            mediaRecorder?.release(); mediaRecorder = null
+            Toast.makeText(this, "Не удалось открыть микрофон: ${e.message}", Toast.LENGTH_LONG).show()
         }
-        override fun onError(error: Int) {
-            partial = ""
-            if (recording) {
-                // Permission, unavailable service, and other non-recoverable errors.
-                if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ||
-                    error == SpeechRecognizer.ERROR_CLIENT ||
-                    error == SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED ||
-                    error == SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE) {
-                    stopRecording()
-                    Toast.makeText(this@MainActivity, "Ошибка распознавания: $error", Toast.LENGTH_LONG).show()
-                } else {
-                    restartFailures++
-                    if (restartFailures >= 8) {
-                        stopRecording()
-                        Toast.makeText(this@MainActivity, "Распознавание временно недоступно. Сохранённые фразы остались в истории.", Toast.LENGTH_LONG).show()
-                    } else scheduleRestart(if (error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) 1800L else 850L * restartFailures)
+    }
+
+    private fun finishRecording() {
+        if (!recording) return
+        recording = false
+        cue(false)
+        var complete = true
+        try { mediaRecorder?.stop() } catch (e: Exception) { complete = false }
+        try { mediaRecorder?.release() } catch (_: Exception) { }
+        mediaRecorder = null
+        render()
+        val file = audioFile
+        if (!complete || file == null || file.length() < 2048) {
+            Toast.makeText(this, "Запись слишком короткая или повреждена", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (System.currentTimeMillis() - startMs > 19 * 60 * 1000) {
+            Toast.makeText(this, "Длинная запись: сервер может отклонить файл больше 24 МБ", Toast.LENGTH_LONG).show()
+        }
+        sendToCloud(file)
+    }
+
+    private fun sendToCloud(file: File) {
+        if (isUploading) return
+        isUploading = true
+        render()
+        val endpoint = backendUrl
+        val token = clientToken
+        Thread {
+            try {
+                if (file.length() > 24 * 1024 * 1024L) error("Запись больше 24 МБ. Разделите её на части.")
+                val boundary = "----NiggaTekst${System.currentTimeMillis()}"
+                val connection = (URL("$endpoint/v1/analyze").openConnection() as HttpURLConnection)
+                try {
+                    connection.requestMethod = "POST"
+                    connection.setRequestProperty("Authorization", "Bearer $token")
+                    connection.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                    connection.connectTimeout = 20000
+                    connection.readTimeout = 180000
+                    connection.doOutput = true
+                    connection.outputStream.use { stream ->
+                        val data = DataOutputStream(stream)
+                        data.writeBytes("--$boundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"meeting.m4a\"\r\nContent-Type: audio/mp4\r\n\r\n")
+                        file.inputStream().use { it.copyTo(data) }
+                        data.writeBytes("\r\n--$boundary--\r\n")
+                        data.flush()
+                    }
+                    val code = connection.responseCode
+                    val body = (if (code in 200..299) connection.inputStream else connection.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
+                    if (code !in 200..299) error("Сервер вернул $code: ${body.take(180)}")
+                    val result = JSONObject(body)
+                    val segments = result.optJSONArray("segments") ?: JSONArray()
+                    val lines = mutableListOf<String>()
+                    for (i in 0 until segments.length()) {
+                        val seg = segments.optJSONObject(i) ?: continue
+                        val speaker = seg.optString("speaker", "?")
+                        val start = seg.optDouble("start", 0.0).toInt()
+                        val mm = start / 60; val ss = start % 60
+                        lines.add("Спикер $speaker [%02d:%02d]: %s".format(mm, ss, seg.optString("text")))
+                    }
+                    val sum = result.optString("summary", "")
+                    runOnUiThread {
+                        utterances.clear(); utterances.addAll(lines)
+                        cloudSummary = sum
+                        if (!persistConversation()) Toast.makeText(this, "Ошибка сохранения истории", Toast.LENGTH_LONG).show()
+                        isUploading = false
+                        render()
+                        Toast.makeText(this, "Готово: диалог и конспект сохранены", Toast.LENGTH_LONG).show()
+                    }
+                    file.delete() // Delete raw audio only after successful processing.
+                } finally { connection.disconnect() }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    isUploading = false
+                    render()
+                    Toast.makeText(this, "Ошибка обработки: ${e.message}. Аудио сохранено локально.", Toast.LENGTH_LONG).show()
                 }
             }
-        }
-    }
-
-    private fun scheduleRestart(delayMs: Long) {
-        if (!recording || restartQueued) return
-        restartQueued = true
-        handler.postDelayed({ restartQueued = false; if (recording) listen() }, delayMs)
+        }.start()
     }
 
     private fun stopRecording() {
+        // Lifecycle stop preserves audio locally; it does not silently upload it.
+        if (!recording) return
         recording = false
-        restartQueued = false
-        handler.removeCallbacksAndMessages(null)
-        try { recognizer?.cancel() } catch (_: Exception) { }
-        try { recognizer?.destroy() } catch (_: Exception) { }
-        recognizer = null
-        partial = ""
-        persistConversation()
+        try { mediaRecorder?.stop() } catch (_: Exception) { }
+        try { mediaRecorder?.release() } catch (_: Exception) { }
+        mediaRecorder = null
         render()
     }
 
     private fun render() {
         if (!::statusText.isInitialized) return
-        statusText.text = if (recording) "● Идёт распознавание. Держите приложение открытым." else "○ Остановлено"
-        startButton.text = if (recording) "Остановить" else "Начать запись"
+        statusText.text = when { recording -> "● Идёт запись · индикатор микрофона"; isUploading -> "◌ Обработка на сервере..."; else -> "○ Остановлено" }
+        startButton.text = if (recording) "Остановить и обработать" else "Начать запись"
+        startButton.isEnabled = !isUploading
         transcriptText.text = (utterances + listOfNotNull(partial.takeIf { it.isNotBlank() }?.let { "$it …" }))
             .joinToString("\n\n").ifBlank { "Пока нет распознанной речи" }
-        summaryText.text = NotesSummarizer.create(utterances)
+        summaryText.text = cloudSummary.ifBlank { NotesSummarizer.create(utterances) }
     }
 
     private fun shareNotes() {
         val date = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
-        val body = "Конспект разговора ($date)\n\n${NotesSummarizer.create(utterances)}\n\nПОЛНАЯ РАСШИФРОВКА\n${utterances.joinToString("\n")}" 
+        val body = "Конспект разговора ($date)\n\n${cloudSummary.ifBlank { NotesSummarizer.create(utterances) }}\n\nПОЛНАЯ РАСШИФРОВКА\n${utterances.joinToString("\n")}" 
         val intent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, "Конспект разговора")
@@ -305,6 +389,7 @@ class MainActivity : Activity() {
                 put("created", createdAt)
                 put("updated", updatedAt)
                 put("phrases", JSONArray(utterances))
+                put("cloud_summary", cloudSummary)
             }
             updated.put(obj)
             for (i in 0 until array.length()) {
@@ -350,6 +435,7 @@ class MainActivity : Activity() {
             val phrase = phrases.optString(j).trim()
             if (phrase.isNotBlank()) utterances.add(phrase)
         }
+        cloudSummary = obj.optString("cloud_summary", "")
         hasSavedContent = utterances.isNotEmpty()
         lastFinal = utterances.lastOrNull()
         partial = ""
@@ -358,6 +444,7 @@ class MainActivity : Activity() {
     }
 
     private fun newConversation() {
+        if (recording || isUploading) { Toast.makeText(this, "Сначала завершите запись и обработку", Toast.LENGTH_LONG).show(); return }
         stopRecording()
         if (!persistConversation()) {
             Toast.makeText(this, "Не удалось сохранить разговор. Новый не создан.", Toast.LENGTH_LONG).show()
@@ -369,6 +456,7 @@ class MainActivity : Activity() {
         updatedAt = createdAt
         hasSavedContent = false
         utterances.clear()
+        cloudSummary = ""
         partial = ""
         lastFinal = null
         prefs.edit().remove("current_id").apply()
